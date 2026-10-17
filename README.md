@@ -2,7 +2,19 @@
 
 Version **1.0.0** (`1.0.0-1000` in SRM Package Center) is a fresh-install WireGuard client for the Synology RT2600ac. The downloadable `.spk` includes the ARMv7 WireGuard binaries, the Manager, and an SRM desktop App. No separate MSYS2 build is needed on the user's computer.
 
+**Tested Router firmware:** SRM 1.3.2-9366 Update 3 on the RT2600ac.
+
 The exact package offered in this release was installed and exercised on one recoverable RT2600ac on 16 October 2026. The owner reported that fresh installation, SRM administrator binding, profile import, profile and Manager activation, a selected routing rule, ordinary Internet access, reboot persistence, and guest isolation passed. It has **not** been tested on a second independent Router or independently security-audited. Back up your Router before using it.
+
+## Screenshots
+
+**SRM Package Center:** WireGuard Manager installed and running as version `1.0.0-1000`.
+
+![WireGuard Manager in SRM Package Center](screenshots/package-center.png)
+
+**Manager interface:** example routing-rule screen. The status indicators reflect the test state when this screenshot was taken, not the expected status of every installation.
+
+![WireGuard Manager routing-rule interface](screenshots/manager-ui.png)
 
 ## Download and verify
 
