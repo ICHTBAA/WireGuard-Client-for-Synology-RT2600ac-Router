@@ -61,6 +61,20 @@ This version supports one primary `lbr0` IPv4 LAN. It is **not an upgrade packag
 
 Keep VPN `.conf` files, private keys, token-bearing URLs, and Router backups out of public issues and screenshots.
 
+## Wildcard domains and DNS learning in v1.0.0
+
+The v1.0.0 fresh installer leaves **Event DNS learning Off**. Without it, `*.example.com` can pre-resolve the base domain and configured Suffix Prefixes, but it will not automatically learn arbitrary new subdomains. After enabling Manager, activate the included learner once from a root SSH session:
+
+```sh
+M=/volume1/WireGuard/manager
+"$M/bin/manager-control.sh" enable-event-dns
+"$M/bin/event-dns-engine.sh" status
+```
+
+The first command reapplies Manager-owned routing and may briefly interrupt selected VPN traffic. Proceed only when you have a recovery connection. Successful status reports `enabled=1`, `worker=running`, `capture=available`, and `managed_map=present`. No additional Save & Apply is needed. If `tcpdump` is unavailable, activation refuses the change; do not assume wildcard learning is active.
+
+An enabled `*.example.com` rule matches the base domain and subdomains at any depth, but the Router can learn only IPv4 A answers it actually observes on its `lbr0` LAN. Client-side encrypted DNS, pre-existing DNS caches, and IPv6-only answers are not covered. Suffix Prefixes are for a few predictable hostnames, not number ranges or automatic enumeration. The rule editor's “Not resolved yet” text does not show event-learned subdomain IPs; those are recorded under `manager/run/event-dns/ledger` on the Router. Do not publish that runtime file without reviewing it for private browsing information.
+
 ## Operation and recovery
 
 - Turning a rule **Off** and saving stops that rule; changing its action to WAN is not required. Deleting a rule also removes its saved configuration.
