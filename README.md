@@ -160,12 +160,6 @@ The background health worker monitors active profiles for sustained outbound-onl
 
 ## Upgrade from an earlier version
 
-Version **1.0.10** supports in-place upgrades through Package Center from installed versions **`1.0.1-1001` through `1.0.9-1009`**.
-
-**Version `1.0.0` is not included in this upgrade path.** Do not uninstall the existing package or rename `/volume1/WireGuard` as a workaround; first preserve your existing configuration and use an appropriate migration procedure.
-
-To upgrade:
-
 1. Make an external backup of your settings, WireGuard profiles, and private keys. Keep the previous SPK for recovery.
 2. In WireGuard Manager, select **Disable** and wait until **Apply** finishes.
 3. Open **SRM Package Center → Manual Install** and select the verified v1.0.10 SPK.
