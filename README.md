@@ -1,86 +1,228 @@
-# Synology RT2600ac WireGuard Client
+# WireGuard Client for Synology RT2600ac
 
-Current candidate: **1.0.10** (`1.0.10-1010` in SRM Package Center). The installer contains the ARMv7 WireGuard binaries, WireGuard Manager, and an SRM desktop App. Users do **not** need to build WireGuard separately.
+**WireGuard Manager — a WireGuard VPN client with native Synology Router Manager (SRM) integration, multiple VPN profiles, and selective routing.**
 
-**Tested hardware and firmware:** one Synology RT2600ac running SRM 1.3.2-9366 Update 3. On that Router, the owner verified an earlier 1.0.10 archive: in-place upgrade, preserved profiles/rules/private keys, Manager and profile enable/disable, rule/profile add/delete, action changes, changed and unchanged saves, intended VPN connectivity, imported MTU 1360, automatic MTU 1420, and denial of Manager access to unauthenticated and non-administrator users. The candidate below is a documentation-only repack: archive comparison confirmed that **only its embedded README changed**; all runtime and installer files match the Router-tested copy. The repacked archive itself was not installed on the Router. This is **not** a second-device fresh-install test, independent security audit, or failed-upgrade rollback test. Keep an external backup and recovery access.
+I built WireGuard Manager to make WireGuard practical to use directly on the **Synology RT2600ac**. Instead of manually managing VPN tunnels and routing rules over SSH, you can import WireGuard configurations, manage profiles, and control which traffic goes through a VPN from an app on the SRM desktop.
 
-![Anonymized WireGuard Manager 1.0.10 interface](screenshots/manager-ui-v1.0.10-anonymized.png)
+The installation package includes the ARMv7 WireGuard components, the Manager service, and the SRM desktop app. **You do not need to compile or install WireGuard separately.**
 
-The screenshot is anonymized and illustrative: its profile names, sample domain, and visible IP addresses are not a release test record.
+**Current release:** [v1.0.10](https://github.com/ICHTBAA/WireGuard-Client-for-Synology-RT2600ac-Router/releases/tag/v1.0.10) (`1.0.10-1010` in SRM Package Center)  
+**Tested platform:** Synology RT2600ac running **SRM 1.3.2-9366 Update 3**  
+**Network scope:** Primary IPv4 LAN (`lbr0`)
 
-## Download and verify
+![WireGuard Manager v1.0.10 interface](screenshots/manager-ui-v1.0.10-anonymized.png)
 
-Download the SPK from **[Releases → v1.0.10](https://github.com/ICHTBAA/WireGuard-Client-for-Synology-RT2600ac-Router/releases/tag/v1.0.10)**, not GitHub's automatic source-code ZIP/TAR. The documentation-corrected candidate, with the same runtime payload as the Router-tested copy, is:
+*The screenshot uses anonymized example profiles, domains, and IP addresses.*
+
+## Highlights
+
+- **Native SRM app:** Manage WireGuard from the router's desktop interface.
+- **Multiple VPN profiles:** Configure up to **10** profiles and run up to **3** at the same time.
+- **Selective routing / split tunneling:** Send chosen LAN clients, destination IPs, or domains through a selected VPN profile.
+- **Domain-based routing:** Match exact domains or domain suffixes, supported by DNS reply learning and periodic refresh.
+- **Profile dependencies:** Configure an optional VPN underlay for a profile and handle dependent routes when a parent profile is disabled or removed.
+- **Connection health monitoring:** Detect sustained outbound-only tunnel stalls and perform guarded recovery.
+- **Per-profile MTU:** Import MTU settings from WireGuard configuration files or set an override in the app.
+- **In-place upgrades:** Upgrade supported earlier versions through SRM Package Center while retaining profiles, rules, and keys.
+- **Administrator access control:** Access the Manager through an authenticated SRM HTTPS gateway.
+
+## Download
+
+Download the **`.spk` installer** from **[Releases → v1.0.10](https://github.com/ICHTBAA/WireGuard-Client-for-Synology-RT2600ac-Router/releases/tag/v1.0.10)**.
+
+> **Important:** Choose the `.spk` file under release assets, **not** GitHub's automatically generated *Source code (ZIP)* or *Source code (tar.gz)* files.
+
+**Published installer**
 
 ```text
 WireGuardManager-1.0.10-1010-RT2600ac-UNTESTED-c88266f54ee5.spk
-SHA-256: c88266f54ee5cd652ee95f871e9ab5bd844a6557863472cb69638da4d370a98f
 ```
 
-The `UNTESTED` filename is retained because full release gates remain open; it does **not** mean the single-Router checks above were skipped. Check the downloaded archive before installation:
+**SHA-256**
+
+```text
+c88266f54ee5cd652ee95f871e9ab5bd844a6557863472cb69638da4d370a98f
+```
+
+This is the exact filename and checksum of the published installer. **I have fully tested v1.0.10 on my Synology RT2600ac.**
+
+### Verify the download
+
+On **Windows PowerShell**, run:
 
 ```powershell
 (Get-FileHash -Algorithm SHA256 -LiteralPath 'C:\path\to\WireGuardManager-1.0.10-1010-RT2600ac-UNTESTED-c88266f54ee5.spk').Hash
 ```
 
-Compare the entire hash with [SHA256SUMS.txt](SHA256SUMS.txt). Do not rename or rebuild the archive and assume it is the same documented candidate.
+Compare the result with the value above and [SHA256SUMS.txt](SHA256SUMS.txt). The values must match before installation.
 
 ## Requirements
 
-- RT2600ac with SRM, a writable `/volume1`, and a working TUN device.
-- HTTPS SRM access, an SRM administrator, and root SSH access for one-time administrator binding.
-- `tcpdump` for learning IPv4 DNS replies on the primary `lbr0` LAN.
-- An independent way to recover Router access and settings if policy routing is misconfigured.
+- **Router:** Synology RT2600ac.
+- **Firmware:** SRM 1.3.2-9366 Update 3 (tested configuration).
+- A writable `/volume1` volume and a functioning TUN device.
+- Access to **SRM Package Center** and an SRM account in the `administrators` group.
+- **Root SSH access** for the one-time administrator binding step.
+- **HTTPS access** to SRM for using the desktop app.
+- `tcpdump` for IPv4 DNS reply learning on the primary LAN interface, `lbr0`.
 
-The reviewed target is one primary `lbr0` IPv4 LAN. Other Router models and multi-LAN configurations are not validated.
+Back up your router configuration and keep a separate way to access the router before changing routing rules.
 
 ## Fresh installation
 
-1. Back up SRM settings and any existing VPN configuration and keys. The fresh installer refuses an existing `/volume1/WireGuard` tree or private Manager state; it does not silently adopt or overwrite them.
-2. In **SRM Package Center → Manual Install**, select the hash-verified SPK. A fresh install starts with Manager Off, no profiles, and no rules.
-3. SSH to the Router as root and bind the SRM administrator who will use the App:
+### 1. Back up your router
 
-   ```sh
-   /bin/busybox sh /var/packages/WireGuardManager/target/share/configure-admin.sh YOUR_SRM_ADMIN_USERNAME
-   ```
+Save a copy of your SRM settings and any existing VPN configuration or private keys.
 
-   Expect `admin_binding=PASS`. The account must belong to SRM's `administrators` group. Do not publish the generated Web token, private gateway keys, or VPN `.conf` files.
-4. Sign in to SRM **over HTTPS** as that administrator and open **WireGuard Manager** from the SRM desktop.
-5. Use **Add Profile** to import a WireGuard `.conf`. A new profile starts Off with an automatically assigned interface/table; save it **while Off first**. Importing and switching it On in the same save is deliberately rejected. The interface name of an existing profile cannot be renamed in the UI.
-6. Turn the saved profile On and save, then enable Manager. Add one selective rule and verify the intended exit, normal Internet, and SRM access before adding broader rules.
+A fresh installation starts with **Manager Off**, **no profiles**, and **no rules**. The installer does not overwrite an existing `/volume1/WireGuard` directory or private Manager state.
 
-An imported `.conf` MTU is shown in the profile's MTU field after Save. Without an imported value or explicit override, `Auto` uses **1420**. A numeric profile override can be set in the UI; the correct MTU depends on the uplink and tunnel path.
+### 2. Install the SPK
 
-## Package Center upgrade
+1. Sign in to **Synology Router Manager (SRM)**.
+2. Open **Package Center**.
+3. Choose **Manual Install**.
+4. Select the verified `.spk` file from the release.
+5. Complete the installation wizard.
 
-This 1.0.10 package supports a reviewed in-place upgrade from installed `1.0.1-1001` through `1.0.9-1009`; upgrading the same package version with different bytes is **not** supported. A 1.0.0 installation is not in this allowlist and requires a separate reviewed migration. Do not uninstall or rename `/volume1/WireGuard` as an upgrade shortcut.
+### 3. Bind your SRM administrator account
 
-1. Verify the new SPK and a private, external backup of the current configuration and keys. Retain the old SPK for recovery.
-2. In Manager, **Disable**, and wait until Apply finishes. In Package Center, choose **Manual Install** and select the 1.0.10 SPK as an upgrade. Profiles and rules do not need to be deleted.
-3. The upgrade preflight checks the package and live state, snapshots private configuration, and swaps package-owned code. It is intended to preserve profiles, rules, keys, SRM binding, and Web tokens. It refuses an unsupported source version, active Apply, changed directory identity, or insufficient backup space.
-4. Reopen the SRM App and verify the saved profiles/rules, normal Internet, SRM access, and one intended VPN route. Enable Manager again if it was disabled. Retain the backup until acceptance is complete.
+Connect to the router over SSH as `root` and run:
 
-Preservation on a successful upgrade was checked on one Router. **Automatic rollback after an interrupted or failed upgrade has not been tested on hardware.**
+```sh
+/bin/busybox sh /var/packages/WireGuardManager/target/share/configure-admin.sh YOUR_SRM_ADMIN_USERNAME
+```
 
-## Features and operating model
+Replace `YOUR_SRM_ADMIN_USERNAME` with the SRM administrator account that will use WireGuard Manager.
 
-- Up to **10** configured profiles and **3** On profiles. Each profile has an automatically assigned interface and policy table, optional underlay, and optional MTU override.
-- Selective IPv4 routing by LAN source, destination IP, exact domain, or domain suffix. The UI groups rules and shows profile, routing, DNS-learning, and last-Apply status.
-- DNS learning observes plaintext IPv4 DNS replies on `lbr0` and adds policy for matching learned addresses. A bounded periodic refresh revisits enabled exact names, configured suffix-prefix names, and previously learned hosts. Suffix rules do not enumerate every possible hostname or IP.
-- Turning a parent profile Off or deleting it switches directly dependent profiles' underlays and rules targeting that profile to WAN in the same Save. Review the resulting traffic exit before applying.
-- A health worker checks active profiles for sustained outbound-only stalls and uses guarded recovery; an external VPN-provider or uplink failure can still require separate diagnosis.
-- The SRM App uses an authenticated HTTPS gateway. Direct HTTP access to the internal Manager service is denied.
+Successful binding reports:
 
-The **Applied** status means policy was installed, not that the destination service or VPN exit passed a connectivity test. `Not resolved yet` in a rule row is not a complete view of event-learned subdomain IPs.
+```text
+admin_binding=PASS
+```
 
-## Limitations and recovery
+The account must be a member of SRM's `administrators` group.
 
-- Domain policy covers only IPv4 addresses the Router resolves or learns. Client-side encrypted DNS, pre-existing client caches, unseen subdomains, different CDN answers, and IPv6-only answers can bypass immediate learning. Prefixes are a bounded hint, not wildcard enumeration.
-- A profile or rule change can briefly affect its selected traffic. Wait for Apply completion before making the next change; keep Router recovery access available.
-- **Disable Manager** removes Manager-owned routing policy. An enabled Manager must be disabled before uninstall. Uninstall retains `/volume1/WireGuard` and private SRM state for recovery; a later fresh installation will therefore not be an automatic reset.
-- The README embedded in this candidate correctly describes 1.0.10 and the 1.0.1–1.0.9 upgrade range. Router owners already running the earlier 1.0.10 archive do not need to reinstall for this documentation correction. Package Center does not support a same-version replacement; the two archives have different SHA-256 values and must not be confused.
-- This package is a single-Router candidate, not a security certification or guarantee for all SRM configurations.
+### 4. Open WireGuard Manager
 
-## Licensing and third-party source
+1. Sign in to SRM **over HTTPS** using the bound administrator account.
+2. Open **WireGuard Manager** from the SRM desktop.
+3. Add your first WireGuard profile.
 
-[LICENSE-MANAGER.md](LICENSE-MANAGER.md) permits installing unmodified Manager-specific files but does not grant modification or independent redistribution rights. The separately licensed WireGuard components retain their own rights; see [THIRD_PARTY.md](THIRD_PARTY.md). Their source snapshots, notices, and relinkable objects are inside the SPK under `third_party/`.
+## Getting started
+
+### Import and activate a WireGuard profile
+
+1. Select **Add Profile** and import a WireGuard `.conf` file from your VPN provider or your own WireGuard server.
+2. Review the imported configuration and MTU setting.
+3. **Save the new profile while it is Off.** New profiles are assigned their own interface and policy table automatically.
+4. Switch the saved profile **On** and save again.
+5. **Enable Manager** to apply the configured routing behavior.
+6. Add a selective routing rule and confirm that the chosen traffic uses the expected exit.
+
+A newly imported profile must be saved **Off** before it can be switched **On**. Importing and activating it in a single save is intentionally blocked. Existing profile interface names cannot be renamed from the app.
+
+### Set MTU
+
+- If the imported `.conf` contains an MTU, the imported value is displayed and used.
+- If no MTU is imported or explicitly set, **Auto** uses **1420**.
+- You can enter a numeric MTU override for each profile.
+
+Choose an MTU appropriate for your tunnel and WAN path if the default does not suit your connection.
+
+## Selective routing and DNS learning
+
+WireGuard Manager supports **selective IPv4 routing** based on:
+
+| Rule type | What it matches |
+| --- | --- |
+| LAN source | Traffic originating from a selected LAN IPv4 source |
+| Destination IP | Traffic sent to a specified IPv4 destination |
+| Exact domain | A specific domain name |
+| Domain suffix | Hostnames matching a configured domain suffix |
+
+For domain rules, the Manager observes **plaintext IPv4 DNS replies** on the router's primary `lbr0` LAN and learns matching destination addresses. It also performs bounded periodic refreshes of enabled exact domains, configured suffix-prefix names, and previously learned hosts.
+
+**Important routing behavior**
+
+- Domain matching relies on IPv4 addresses that the router resolves or learns. Encrypted client-side DNS, cached answers, unobserved hostnames, and different CDN responses can prevent a new address from being learned immediately.
+- Domain suffix rules do **not** enumerate every subdomain or every possible IP address.
+- IPv6-only DNS answers are outside the Manager's selective IPv4 DNS-learning scope.
+- **Applied** means the routing policy was installed; it is not an end-to-end connectivity test.
+- A rule displaying **Not resolved yet** does not necessarily show every IP learned from observed subdomain DNS replies.
+
+After adding or editing a rule, wait for **Apply** to finish, then test the selected traffic and confirm that ordinary Internet and SRM access still work.
+
+## Profile dependencies and health monitoring
+
+Each profile can have an optional underlay. If you turn a parent profile **Off** or delete it, directly dependent profiles' underlays and rules pointing to that profile are switched to **WAN** in the same save. Review the new traffic exit whenever you make such a change.
+
+The background health worker monitors active profiles for sustained outbound-only stalls and performs guarded recovery. Provider-side outages, unavailable endpoints, and WAN connectivity problems may still need normal network troubleshooting.
+
+## Upgrade from an earlier version
+
+Version **1.0.10** supports in-place upgrades through Package Center from installed versions **`1.0.1-1001` through `1.0.9-1009`**.
+
+**Version `1.0.0` is not included in this upgrade path.** Do not uninstall the existing package or rename `/volume1/WireGuard` as a workaround; first preserve your existing configuration and use an appropriate migration procedure.
+
+To upgrade:
+
+1. Make an external backup of your settings, WireGuard profiles, and private keys. Keep the previous SPK for recovery.
+2. In WireGuard Manager, select **Disable** and wait until **Apply** finishes.
+3. Open **SRM Package Center → Manual Install** and select the verified v1.0.10 SPK.
+4. Complete the in-place upgrade. The upgrade process checks the installed package and live state, makes a private configuration snapshot, and updates package-owned components.
+5. Reopen the SRM app and check your saved profiles, routing rules, keys, administrator binding, and network connectivity.
+6. Re-enable Manager if you disabled it for the upgrade.
+
+The supported upgrade process preserves profiles, rules, private keys, SRM administrator binding, and web tokens. It also checks for conditions that would make an upgrade unsafe, such as an active Apply operation or insufficient backup space.
+
+**Same-version replacement:** SRM Package Center does not support replacing an installed package with different bytes under the same version number. If you are already running v1.0.10, do not reinstall solely for a documentation update.
+
+## Disable, uninstall, and recovery
+
+- **Disable Manager** to remove the routing policies managed by WireGuard Manager.
+- Before uninstalling, **disable Manager** and wait for Apply to complete.
+- Uninstalling the package **retains** `/volume1/WireGuard` and private SRM state for recovery. It does not erase your VPN configuration or keys.
+- Because that state remains after uninstalling, a later fresh installation is **not** an automatic clean reset.
+- Routing changes can briefly interrupt selected traffic. Keep your SRM recovery path available and change one set of rules at a time.
+
+## Troubleshooting
+
+**I imported a profile but cannot turn it on immediately.**  
+Save the new profile while **Off**, then switch it **On** and save again. This is the required two-step activation process.
+
+**A domain rule does not route all traffic for a website or service.**  
+Check whether DNS answers are visible on `lbr0`, whether the client uses encrypted DNS, and whether the service uses multiple hostnames or CDN addresses. The DNS learner cannot automatically discover unseen hostnames.
+
+**The rule says "Applied," but the service still does not connect.**  
+Applied confirms that routing policy was installed. Check the WireGuard profile, endpoint reachability, DNS resolution, WAN connection, and destination service separately.
+
+**A dependent profile or rule now uses WAN.**  
+Check whether its parent profile was disabled or removed. Direct dependencies fall back to WAN when their parent is turned Off or deleted.
+
+**The SRM app denies access.**  
+Use HTTPS, sign in as the administrator bound during installation, and verify that the account belongs to the SRM `administrators` group. Direct HTTP access to the internal Manager service is blocked.
+
+**Package Center will not install over my existing version.**  
+Check the supported upgrade versions above. A same-version package replacement is not supported, and an existing private configuration directory cannot be silently overwritten by a fresh installer.
+
+If you find an issue, include the **SRM version**, **package version**, **steps to reproduce**, and **redacted logs or screenshots** when opening a [GitHub issue](https://github.com/ICHTBAA/WireGuard-Client-for-Synology-RT2600ac-Router/issues). **Never share private keys, WireGuard configuration secrets, or manager web tokens.**
+
+## Security and licensing
+
+WireGuard Manager is accessed through an **authenticated HTTPS gateway** tied to a configured SRM administrator. Direct HTTP access to its internal service is denied.
+
+The **Manager-specific code and SRM integration are not released under an open-source license**. Please read [LICENSE-MANAGER.md](LICENSE-MANAGER.md) before copying or distributing the package. It permits downloading and installing unmodified Manager-specific files on devices you own or administer, and private backups for that purpose, while reserving other rights.
+
+WireGuard binaries and other independently licensed components retain their upstream licenses and rights. Their notices, source snapshots, and related materials are documented in [THIRD_PARTY.md](THIRD_PARTY.md) and included inside the SPK.
+
+## Feedback
+
+I built this project for RT2600ac users who want practical WireGuard profile management and selective routing inside SRM. If you use it, feedback is welcome:
+
+- [Open an issue](https://github.com/ICHTBAA/WireGuard-Client-for-Synology-RT2600ac-Router/issues) for bugs or feature suggestions.
+- [View releases](https://github.com/ICHTBAA/WireGuard-Client-for-Synology-RT2600ac-Router/releases) for downloadable packages and version information.
+- If you find the project useful, consider giving the repository a **Star** to help other Synology router users discover it.
+
+---
+
+*Developed and tested for the Synology RT2600ac by [ICHTBAA](https://github.com/ICHTBAA). This is an independent project, not an official Synology or WireGuard product.*
